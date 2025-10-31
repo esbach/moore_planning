@@ -56,6 +56,18 @@ function cancelNewProject() {
   newProjectName.value = '';
   newProjectDescription.value = '';
 }
+
+async function handleSignOut() {
+  try {
+    await auth.signOut();
+    // Navigate to root to show login page
+    router.push('/');
+  } catch (error) {
+    console.error('Sign out error:', error);
+    // Still try to navigate even if there's an error
+    router.push('/');
+  }
+}
 </script>
 
 <template>
@@ -149,7 +161,7 @@ function cancelNewProject() {
     <!-- Sign Out Button (Bottom) -->
     <div class="px-4 pb-6 flex-shrink-0">
       <button
-        @click="auth.signOut()"
+        @click="handleSignOut"
         class="w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-gray-700 hover:bg-gray-200 hover:text-gray-900 transition-colors"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
