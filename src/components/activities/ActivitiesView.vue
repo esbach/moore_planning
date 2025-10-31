@@ -36,6 +36,10 @@ const editDescription = ref('');
 const editNotes = ref('');
 const saving = ref(false);
 
+// Accordion states
+const objectiveExpanded = ref(false); // Default closed
+const outputExpanded = ref(true); // Default open
+
 async function loadData() {
   loading.value = true;
   try {
@@ -146,6 +150,8 @@ watch([statusFilter, selectedUserId], applyFilters);
 watch(() => selectedActivity.value?.id, () => {
   isEditing.value = false;
   editNotes.value = '';
+  objectiveExpanded.value = false; // Reset to closed
+  outputExpanded.value = true; // Reset to open
 });
 
 // Watch for route query changes to open activity details
@@ -443,22 +449,65 @@ async function saveChanges() {
             />
           </div>
           
-          <!-- Context -->
-          <div class="space-y-2">
-            <div>
-              <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Objective</div>
-              <div class="text-sm text-gray-900">
-                <span v-if="selectedActivity.objectiveNumber">{{ selectedActivity.objectiveNumber }}</span>
-                <span v-if="selectedActivity.objectiveNumber && selectedActivity.objectiveTitle">: </span>
-                <span v-if="selectedActivity.objectiveTitle">{{ selectedActivity.objectiveTitle }}</span>
-                <span v-if="!selectedActivity.objectiveNumber && !selectedActivity.objectiveTitle">-</span>
+            <!-- Context with Accordions -->
+            <div class="space-y-2">
+              <!-- Objective Accordion -->
+              <div class="border border-gray-200 rounded-lg bg-white">
+                <div 
+                  class="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+                  @click="objectiveExpanded = !objectiveExpanded"
+                >
+                  <div class="flex items-center gap-2">
+                    <div class="text-xs font-semibold text-gray-500 uppercase">Objective</div>
+                    <svg 
+                      class="w-4 h-4 text-gray-500 transition-transform flex-shrink-0" 
+                      :class="{ 'rotate-90': objectiveExpanded }"
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+                <div v-if="objectiveExpanded" class="px-3 pb-3 border-t bg-gray-50">
+                  <div class="pt-3">
+                    <div class="text-sm text-gray-900">
+                      <span v-if="selectedActivity.objectiveNumber">{{ selectedActivity.objectiveNumber }}</span>
+                      <span v-if="selectedActivity.objectiveNumber && selectedActivity.objectiveTitle">: </span>
+                      <span v-if="selectedActivity.objectiveTitle">{{ selectedActivity.objectiveTitle }}</span>
+                      <span v-if="!selectedActivity.objectiveNumber && !selectedActivity.objectiveTitle">-</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Output Accordion -->
+              <div v-if="selectedActivity.outputTitle" class="border border-gray-200 rounded-lg bg-white">
+                <div 
+                  class="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+                  @click="outputExpanded = !outputExpanded"
+                >
+                  <div class="flex items-center gap-2">
+                    <div class="text-xs font-semibold text-gray-500 uppercase">Output</div>
+                    <svg 
+                      class="w-4 h-4 text-gray-500 transition-transform flex-shrink-0" 
+                      :class="{ 'rotate-90': outputExpanded }"
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+                <div v-if="outputExpanded" class="px-3 pb-3 border-t bg-gray-50">
+                  <div class="pt-3">
+                    <div class="text-sm text-gray-900">{{ selectedActivity.outputTitle }}</div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div v-if="selectedActivity.outputTitle">
-              <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Output</div>
-              <div class="text-sm text-gray-900">{{ selectedActivity.outputTitle }}</div>
-            </div>
-          </div>
           
           <!-- Status and Assignee -->
           <div class="grid grid-cols-2 gap-4">
