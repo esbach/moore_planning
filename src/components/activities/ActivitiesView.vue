@@ -405,9 +405,9 @@ async function saveChanges() {
       </div>
 
       <!-- Tasks Table and Details -->
-      <div class="flex-1 flex overflow-hidden" style="min-height: 0;">
+      <div class="flex-1 relative overflow-hidden" style="min-height: 0;">
         <!-- Tasks Table -->
-        <div class="flex-1 overflow-auto min-w-0">
+        <div class="absolute inset-0 overflow-auto">
           <div v-if="dataStore.loading" class="flex items-center justify-center h-full text-gray-600">Loading...</div>
           <div v-else-if="filteredActivities.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400">
             <p class="text-lg mb-2">No tasks found</p>
@@ -533,10 +533,10 @@ async function saveChanges() {
           </div>
         </div>
         
-        <!-- Detail Panel - Sits to the right like Calendar -->
+        <!-- Detail Panel - Overlay on top -->
         <div 
           v-if="selectedActivity"
-          class="w-96 border-l bg-gray-50 flex flex-col overflow-hidden flex-shrink-0"
+          class="absolute top-0 right-0 bottom-0 w-96 border-l bg-gray-50 flex flex-col overflow-hidden shadow-xl z-20"
         >
           <div class="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
             <h3 class="text-lg font-semibold">Task Details</h3>
