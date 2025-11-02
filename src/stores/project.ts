@@ -1,24 +1,19 @@
 import { defineStore } from 'pinia';
-import { listProjects } from '@/api/projects';
+import { useDataStore } from './data';
 import type { Project } from '@/types';
 
 export const useProjectStore = defineStore('project', {
   state: () => ({
     currentProject: null as Project | null,
-    projects: [] as Project[],
     loading: false,
   }),
   actions: {
-    async loadProjects() {
-      this.loading = true;
-      try {
-        this.projects = await listProjects();
-        // If no current project is set, select the first one (or create default)
-        if (!this.currentProject && this.projects.length > 0) {
-          this.currentProject = this.projects[0];
-        }
-      } finally {
-        this.loading = false;
+    loadProjects() {
+      // Projects are now loaded from data store
+      const dataStore = useDataStore();
+      // If no current project is set, select the first one (or create default)
+      if (!this.currentProject && dataStore.projects.length > 0) {
+        this.currentProject = dataStore.projects[0];
       }
     },
     setCurrentProject(project: Project | null) {
@@ -27,6 +22,11 @@ export const useProjectStore = defineStore('project', {
   },
   getters: {
     isProjectSelected: (state) => state.currentProject !== null,
+    projects: () => {
+      const dataStore = useDataStore();
+      return dataStore.projects;
+    },
   },
 });
+
 

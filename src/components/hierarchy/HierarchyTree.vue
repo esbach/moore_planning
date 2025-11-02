@@ -1,26 +1,39 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
-import { listOutcomes } from '@/api/outcomes';
-import { listObjectives, createObjective, deleteObjective, updateObjective } from '@/api/objectives';
+import { ref, computed, watch } from 'vue';
+import { createObjective, deleteObjective, updateObjective } from '@/api/objectives';
 import { useAuthStore } from '@/stores/auth';
-import { useProjectStore } from '@/stores/project';
-import type { Outcome, Objective } from '@/types';
+import { useDataStore } from '@/stores/data';
+import type { Objective } from '@/types';
+
+const props = defineProps<{
+  projectId: string;
+}>();
 
 const auth = useAuthStore();
-const projectStore = useProjectStore();
+const dataStore = useDataStore();
 const emit = defineEmits<{ (e: 'objective-selected', objective: Objective | null): void }>();
 
-const outcomes = ref<Outcome[]>([]);
-const objectivesMap = ref<Record<string, Objective[]>>({});
 const selectedObjectiveId = ref<string | null>(null);
-const loading = ref(false);
-const loadError = ref<string | null>(null);
 
 const isAdmin = computed(() => auth.profile?.is_admin === true);
 
 // UI state
 const newObjectiveTitle = ref('');
 const showingNewObjective = ref(false);
+
+// Get outcomes for the project from data store
+const outcomes = computed(() => {
+  return dataStore.outcomesByProject(props.projectId);
+});
+
+// Get objectives map from data store
+const objectivesMap = computed(() => {
+  const map: Record<string, Objective[]> = {};
+  outcomes.value.forEach(outcome => {
+    map[outcome.id] = dataStore.objectivesByOutcome(outcome.id);
+  });
+  return map;
+});
 
 // Get all objectives from all outcomes as a flat list
 const allObjectives = computed(() => {
@@ -35,41 +48,22 @@ const allObjectives = computed(() => {
 const firstOutcome = computed(() => outcomes.value[0]);
 
 async function refreshAll() {
-  if (!projectStore.currentProject) {
-    outcomes.value = [];
-    objectivesMap.value = {};
-    return;
-  }
-
-  loading.value = true;
-  loadError.value = null;
+  // Refresh data from store
   try {
-    const ocList = await listOutcomes(projectStore.currentProject.id);
-    outcomes.value = ocList;
-    // Load objectives concurrently for responsiveness
-    const objectivesEntries = await Promise.all(
-      ocList.map(async (oc) => {
-        const list = await listObjectives(oc.id);
-        return [oc.id, list] as const;
-      })
-    );
-    objectivesMap.value = Object.fromEntries(objectivesEntries);
+    await Promise.all([
+      dataStore.refreshOutcomes(),
+      dataStore.refreshObjectives(),
+    ]);
   } catch (e: any) {
-    console.error('Failed to load hierarchy', e);
-    loadError.value = e?.message || 'Failed to load data';
-  } finally {
-    loading.value = false;
+    console.error('Failed to refresh hierarchy', e);
   }
 }
 
-// Reload when project changes
-watch(() => projectStore.currentProject, () => {
+// Clear selection when project changes
+watch(() => props.projectId, () => {
   selectedObjectiveId.value = null;
   emit('objective-selected', null);
-  refreshAll();
 });
-
-onMounted(refreshAll);
 
 // Objective management
 function startAddObjective() {
@@ -140,14 +134,8 @@ function selectObjective(objective: Objective) {
 
 <template>
   <div class="h-full flex flex-col bg-white">
-    <div v-if="loading" class="text-sm text-gray-600 p-4">Loading…</div>
-    <div v-else-if="loadError" class="text-sm text-red-600 p-4">{{ loadError }}</div>
-    
-    <div v-else-if="!projectStore.currentProject" class="flex items-center justify-center h-full text-gray-500">
-      <div class="text-center">
-        <p class="text-sm">No project selected</p>
-      </div>
-    </div>
+    <div v-if="dataStore.loading" class="text-sm text-gray-600 p-4">Loading…</div>
+    <div v-else-if="dataStore.error" class="text-sm text-red-600 p-4">{{ dataStore.error }}</div>
     
     <div v-else class="flex-1 flex flex-col">
       <!-- Header -->
@@ -239,3 +227,4 @@ function selectObjective(objective: Objective) {
     </div>
   </div>
 </template>
+

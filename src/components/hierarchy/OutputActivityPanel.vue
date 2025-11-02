@@ -1,26 +1,22 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { listOutputs, createOutput, deleteOutput, updateOutput } from '@/api/outputs';
-import { listActivities, createActivity, deleteActivity, updateActivity } from '@/api/activities';
-import { listProfiles } from '@/api/profiles';
+import { createOutput, deleteOutput, updateOutput } from '@/api/outputs';
+import { createActivity, deleteActivity, updateActivity } from '@/api/activities';
 import { useAuthStore } from '@/stores/auth';
-import type { Objective, Output, Activity, Profile } from '@/types';
+import { useDataStore } from '@/stores/data';
+import type { Objective, Output, Activity } from '@/types';
 import ActivityForm from './ActivityForm.vue';
 
 const auth = useAuthStore();
+const dataStore = useDataStore();
 const router = useRouter();
 const props = defineProps<{ objective: Objective }>();
 const emit = defineEmits<{ (e: 'output-selected', output: Output | null): void }>();
 
 const isAdmin = computed(() => auth.profile?.is_admin === true);
 
-const outputs = ref<Output[]>([]);
-const activitiesMap = ref<Record<string, Activity[]>>({});
-const profiles = ref<Profile[]>([]);
 const selectedOutputId = ref<string | null>(null);
-const loading = ref(false);
-const loadError = ref<string | null>(null);
 
 // Form states
 const showNewOutput = ref(false);
@@ -28,41 +24,39 @@ const newOutputTitle = ref('');
 const showActivityForm = ref(false);
 const currentActivityInitial = ref<Partial<Activity> | undefined>();
 
+// Get outputs from data store
+const outputs = computed(() => dataStore.outputsByObjective(props.objective.id));
+
+// Get activities map from data store
+const activitiesMap = computed(() => {
+  const map: Record<string, Activity[]> = {};
+  outputs.value.forEach(output => {
+    map[output.id] = dataStore.activitiesByOutput(output.id);
+  });
+  return map;
+});
+
 const selectedOutput = computed(() => outputs.value.find(o => o.id === selectedOutputId.value) || null);
 const selectedActivities = computed(() => selectedOutputId.value ? activitiesMap.value[selectedOutputId.value] || [] : []);
 
-async function loadData() {
-  loading.value = true;
-  loadError.value = null;
+// Profiles from data store
+const profiles = computed(() => dataStore.profiles);
+
+async function refreshData() {
   try {
-    outputs.value = await listOutputs(props.objective.id);
-    
-    // Load all activities for all outputs
-    const activitiesEntries = await Promise.all(
-      outputs.value.map(async (output) => {
-        const list = await listActivities(output.id);
-        return [output.id, list] as const;
-      })
-    );
-    activitiesMap.value = Object.fromEntries(activitiesEntries);
-    
-    // Load profiles
-    profiles.value = await listProfiles();
+    await Promise.all([
+      dataStore.refreshOutputs(),
+      dataStore.refreshActivities(),
+    ]);
   } catch (e: any) {
-    console.error('Failed to load outputs/activities:', e);
-    loadError.value = e?.message || 'Failed to load data';
-  } finally {
-    loading.value = false;
+    console.error('Failed to refresh outputs/activities:', e);
   }
 }
 
-onMounted(loadData);
-
-// Reload data when objective changes
+// Clear selection when objective changes
 watch(() => props.objective.id, () => {
   selectedOutputId.value = null;
   emit('output-selected', null);
-  loadData();
 });
 
 // Output management
@@ -83,7 +77,7 @@ async function saveNewOutput() {
     await createOutput(props.objective.id, title);
     showNewOutput.value = false;
     newOutputTitle.value = '';
-    await loadData();
+    await refreshData();
   } catch (e) {
     console.error(e);
     alert('Failed to create output. See console for details.');
@@ -99,7 +93,7 @@ async function renameOutput(output: Output) {
   const title = window.prompt('Rename output', output.title);
   if (!title) return;
   await updateOutput(output.id, { title });
-  await loadData();
+  await refreshData();
 }
 
 async function deleteOutputById(output: Output) {
@@ -109,7 +103,7 @@ async function deleteOutputById(output: Output) {
     selectedOutputId.value = null;
     emit('output-selected', null);
   }
-  await loadData();
+  await refreshData();
 }
 
 // Activity management
@@ -129,10 +123,10 @@ async function saveActivity(partial: Partial<Activity>) {
       assignee_id: partial.assignee_id ?? null,
       start_date: partial.start_date ?? null,
       end_date: partial.end_date ?? null,
-      status: (partial.status as any) ?? 'not_started', // Default to 1 - Not Started
+      status: (partial.status as any) ?? 'not_started',
       source_links: partial.source_links ?? [],
     } as any);
-    activitiesMap.value[selectedOutputId.value] = await listActivities(selectedOutputId.value);
+    await dataStore.refreshActivities();
     showActivityForm.value = false;
   } catch (e) {
     console.error('Failed to create task:', e);
@@ -143,12 +137,12 @@ async function saveActivity(partial: Partial<Activity>) {
 async function deleteActivityById(activity: Activity) {
   if (!confirm('Delete this task?')) return;
   await deleteActivity(activity.id);
-  activitiesMap.value[activity.output_id] = await listActivities(activity.output_id);
+  await dataStore.refreshActivities();
 }
 
 function getProfileName(profileId: string | null) {
   if (!profileId) return 'Unassigned';
-  const profile = profiles.value.find(p => p.id === profileId);
+  const profile = dataStore.profileById(profileId);
   return profile?.full_name || profile?.email || 'Unknown';
 }
 
@@ -219,8 +213,8 @@ function openTaskInTasksPage(activity: Activity) {
         </div>
 
         <div class="flex-1 overflow-auto p-4">
-          <div v-if="loading" class="text-sm text-gray-600">Loading...</div>
-          <div v-else-if="loadError" class="text-sm text-red-600">{{ loadError }}</div>
+          <div v-if="dataStore.loading" class="text-sm text-gray-600">Loading...</div>
+          <div v-else-if="dataStore.error" class="text-sm text-red-600">{{ dataStore.error }}</div>
           
           <div v-else class="space-y-2">
             <div

@@ -35,3 +35,4 @@ export async function deleteProject(id: string): Promise<void> {
   if (error) throw error;
 }
 
+

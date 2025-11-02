@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue';
-import type { Activity, ActivityStatus, LinkItem, Profile } from '@/types';
-import { listProfiles } from '@/api/profiles';
+import { ref, watch, computed } from 'vue';
+import { useDataStore } from '@/stores/data';
+import type { Activity, ActivityStatus, LinkItem } from '@/types';
 
 const props = defineProps<{ modelValue: boolean; outputId: string; initial?: Partial<Activity> }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'save', v: Partial<Activity>): void }>();
+
+const dataStore = useDataStore();
 
 const title = ref(props.initial?.title ?? '');
 const description = ref(props.initial?.description ?? '');
@@ -12,12 +14,10 @@ const startDate = ref<string | null>(props.initial?.start_date ?? null);
 const endDate = ref<string | null>(props.initial?.end_date ?? null);
 const status = ref<ActivityStatus>(props.initial?.status ?? 'not_started');
 const links = ref<LinkItem[]>(Array.isArray(props.initial?.source_links) ? (props.initial!.source_links as LinkItem[]) : []);
-const profiles = ref<Profile[]>([]);
 const assigneeId = ref<string | null>((props.initial?.assignee_id as string) ?? null);
 
-onMounted(async () => {
-  profiles.value = await listProfiles();
-});
+// Profiles from data store
+const profiles = computed(() => dataStore.profiles);
 
 watch(() => props.initial, (val) => {
   title.value = val?.title ?? '';

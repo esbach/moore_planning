@@ -3,35 +3,51 @@ import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { ref, onMounted } from 'vue';
-import { listAllActivities, updateActivity } from '@/api/activities';
+import { ref, onMounted, computed, watch } from 'vue';
+import { updateActivity } from '@/api/activities';
+import { useDataStore } from '@/stores/data';
 
-const events = ref<any[]>([]);
+const dataStore = useDataStore();
+
 const calendarError = ref<string | null>(null);
 const calendarReady = ref(false);
 
-async function load() {
-  try {
-    const acts = await listAllActivities();
-    events.value = acts.map(a => ({
+// Status color mapping for calendar
+function getStatusColorForCalendar(status: string) {
+  // More transparent colors (using rgba with 40% opacity - 60% transparent)
+  const colors = {
+    'not_started': 'rgba(156, 163, 175, 0.7)', // gray-400 with 70% opacity
+    'started': 'rgba(96, 165, 250, 0.7)', // blue-400 with 70% opacity
+    'in_progress': 'rgba(59, 130, 246, 0.7)', // blue-500 with 70% opacity
+    'review': 'rgba(251, 191, 36, 0.7)', // yellow-400 with 70% opacity
+    'complete': 'rgba(16, 185, 129, 0.7)' // green-500 with 70% opacity
+  };
+  return colors[status as keyof typeof colors] || 'rgba(156, 163, 175, 0.7)';
+}
+
+// Events from data store
+const events = computed(() => {
+  return dataStore.activities
+    .filter(a => a.start_date)
+    .map(a => ({
       id: a.id,
       title: a.title,
       start: a.start_date ?? undefined,
       end: a.end_date ?? a.start_date ?? undefined,
+      backgroundColor: getStatusColorForCalendar(a.status),
+      borderColor: 'transparent', // Remove borders
       extendedProps: a,
     }));
-  } catch (e) {
-    console.error('Failed to load activities:', e);
-  }
+});
+
+function load() {
+  // Data is reactive from store, no async needed
+  calendarReady.value = true;
 }
 
 onMounted(() => {
   try {
-    load().catch(e => {
-      console.error('Calendar initialization error:', e);
-      calendarError.value = e?.message || 'Failed to initialize calendar';
-    });
-    calendarReady.value = true;
+    load();
   } catch (e: any) {
     console.error('Failed to mount calendar:', e);
     calendarError.value = e?.message || 'Failed to mount calendar';
@@ -44,7 +60,7 @@ async function onEventDrop(arg: any) {
     start_date: ev.startStr?.slice(0, 10) ?? null,
     end_date: ev.endStr ? ev.endStr.slice(0, 10) : ev.startStr?.slice(0, 10) ?? null,
   });
-  await load();
+  await dataStore.refreshActivities();
 }
 async function onEventResize(arg: any) {
   const ev = arg.event;
@@ -52,7 +68,7 @@ async function onEventResize(arg: any) {
     start_date: ev.startStr?.slice(0, 10) ?? null,
     end_date: ev.endStr ? ev.endStr.slice(0, 10) : ev.startStr?.slice(0, 10) ?? null,
   });
-  await load();
+  await dataStore.refreshActivities();
 }
 </script>
 

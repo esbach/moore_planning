@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { listAllActivities, updateActivity } from '@/api/activities';
-import { listProfiles } from '@/api/profiles';
+import { updateActivity } from '@/api/activities';
 import { useAuthStore } from '@/stores/auth';
-import { supabase } from '@/lib/supabaseClient';
+import { useDataStore } from '@/stores/data';
 import NotionSidebar from '@/components/layout/NotionSidebar.vue';
-import type { Activity, Profile, Output, Objective, ActivityStatus } from '@/types';
+import type { Activity, ActivityStatus, Output, Objective } from '@/types';
 
 const auth = useAuthStore();
+const dataStore = useDataStore();
 const route = useRoute();
 
 interface ActivityWithContext extends Activity {
@@ -17,14 +17,15 @@ interface ActivityWithContext extends Activity {
   outputTitle: string | null;
 }
 
-const activities = ref<Activity[]>([]);
-const activitiesWithContext = ref<ActivityWithContext[]>([]);
-const profiles = ref<Profile[]>([]);
-const loading = ref(false);
 const filteredActivities = ref<ActivityWithContext[]>([]);
 const statusFilter = ref<string | null>(null);
 const selectedActivity = ref<ActivityWithContext | null>(null);
 const selectedUserId = ref<string | null>(null); // null = my tasks, '' = all, specific id = that user
+
+// Sorting state
+type SortColumn = 'objective' | 'task' | 'assignee' | 'status' | 'startDate' | 'endDate' | 'due' | null;
+const sortColumn = ref<SortColumn>(null);
+const sortDirection = ref<'asc' | 'desc'>('asc');
 
 // Inline editing state
 const isEditing = ref(false);
@@ -40,45 +41,37 @@ const saving = ref(false);
 const objectiveExpanded = ref(false); // Default closed
 const outputExpanded = ref(true); // Default open
 
-async function loadData() {
-  loading.value = true;
-  try {
-    activities.value = await listAllActivities();
-    profiles.value = await listProfiles();
+// Get activities with context from data store
+const activitiesWithContext = computed(() => {
+  // Build maps for quick lookup
+  const outputMap = new Map<string, Output>(dataStore.outputs.map(o => [o.id, o]));
+  const objectiveMap = new Map<string, Objective>(dataStore.objectives.map(o => [o.id, o]));
+  
+  // Enrich activities with context
+  return dataStore.activities.map(activity => {
+    const output = outputMap.get(activity.output_id);
+    const objective = output ? objectiveMap.get(output.objective_id) : null;
     
-    // Fetch all outputs and objectives to build context
-    const { data: outputs } = await supabase.from('outputs').select('*');
-    const { data: objectives } = await supabase.from('objectives').select('*');
-    
-    if (!outputs || !objectives) {
-      throw new Error('Failed to load outputs or objectives');
-    }
-    
-    // Build maps for quick lookup
-    const outputMap = new Map<string, Output>(outputs.map(o => [o.id, o]));
-    const objectiveMap = new Map<string, Objective>(objectives.map(o => [o.id, o]));
-    
-    // Enrich activities with context
-    activitiesWithContext.value = activities.value.map(activity => {
-      const output = outputMap.get(activity.output_id);
-      const objective = output ? objectiveMap.get(output.objective_id) : null;
-      
-      return {
-        ...activity,
-        objectiveNumber: objective 
-          ? (objective.short_name || (objective.index !== null && objective.index !== undefined ? `Obj ${objective.index + 1}` : null))
-          : null,
-        objectiveTitle: objective?.title || null,
-        outputTitle: output?.title || null,
-      };
-    });
-    
-    applyFilters();
-  } catch (e) {
-    console.error('Failed to load activities:', e);
-  } finally {
-    loading.value = false;
-  }
+    return {
+      ...activity,
+      objectiveNumber: objective 
+        ? (objective.short_name || (objective.index !== null && objective.index !== undefined ? `Obj ${objective.index + 1}` : null))
+        : null,
+      objectiveTitle: objective?.title || null,
+      outputTitle: output?.title || null,
+    };
+  });
+});
+
+// Profiles from data store
+const profiles = computed(() => dataStore.profiles);
+
+// Loading state from data store
+const loading = computed(() => dataStore.loading);
+
+function loadData() {
+  // Data is already loaded in store, just apply filters
+  applyFilters();
 }
 
 function selectUser(userId: string | null) {
@@ -106,7 +99,88 @@ function applyFilters() {
     filtered = filtered.filter(a => a.status === statusFilter.value);
   }
   
+  // Apply sorting
+  if (sortColumn.value) {
+    filtered = [...filtered].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+      
+      switch (sortColumn.value) {
+        case 'objective':
+          aValue = a.objectiveNumber || a.objectiveTitle || '';
+          bValue = b.objectiveNumber || b.objectiveTitle || '';
+          break;
+        case 'task':
+          aValue = a.title.toLowerCase();
+          bValue = b.title.toLowerCase();
+          break;
+        case 'assignee':
+          aValue = getProfileName(a.assignee_id).toLowerCase();
+          bValue = getProfileName(b.assignee_id).toLowerCase();
+          break;
+        case 'status':
+          // Use status order for proper sorting
+          const statusOrder: Record<string, number> = {
+            'not_started': 0,
+            'started': 1,
+            'in_progress': 2,
+            'review': 3,
+            'complete': 4
+          };
+          aValue = statusOrder[a.status] ?? 999;
+          bValue = statusOrder[b.status] ?? 999;
+          break;
+        case 'startDate':
+          aValue = a.start_date ? new Date(a.start_date).getTime() : Infinity;
+          bValue = b.start_date ? new Date(b.start_date).getTime() : Infinity;
+          break;
+        case 'endDate':
+          aValue = a.end_date ? new Date(a.end_date).getTime() : Infinity;
+          bValue = b.end_date ? new Date(b.end_date).getTime() : Infinity;
+          break;
+        case 'due':
+          const aDays = getDaysUntilDue(a.end_date);
+          const bDays = getDaysUntilDue(b.end_date);
+          aValue = aDays !== null ? aDays : Infinity;
+          bValue = bDays !== null ? bDays : Infinity;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aValue < bValue) return sortDirection.value === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection.value === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+  
   filteredActivities.value = filtered;
+}
+
+function handleSort(column: SortColumn) {
+  if (sortColumn.value === column) {
+    // Toggle direction if clicking the same column
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    // Set new column and default to ascending
+    sortColumn.value = column;
+    sortDirection.value = 'asc';
+  }
+  applyFilters();
+}
+
+function getSortIcon(column: SortColumn) {
+  if (sortColumn.value !== column) {
+    return '⇅'; // Neutral sort icon
+  }
+  return sortDirection.value === 'asc' ? '▲' : '▼';
+}
+
+function getSortClass(column: SortColumn) {
+  if (sortColumn.value === column) {
+    return 'text-gray-900';
+  }
+  return 'text-gray-400';
 }
 
 
@@ -129,9 +203,9 @@ function formatDaysUntilDue(endDate: string | null): string {
 }
 
 // Initialize on mount
-onMounted(async () => {
+onMounted(() => {
   selectedUserId.value = null; // My tasks by default
-  await loadData();
+  loadData();
   
   // Check for activityId in query params to open details panel
   const activityId = route.query.activityId as string | undefined;
@@ -173,7 +247,7 @@ watch(() => route.query.activityId, (activityId) => {
 
 function getProfileName(profileId: string | null) {
   if (!profileId) return 'Unassigned';
-  const profile = profiles.value.find(p => p.id === profileId);
+  const profile = dataStore.profileById(profileId);
   return profile?.full_name || profile?.email || 'Unknown';
 }
 
@@ -263,7 +337,8 @@ async function saveChanges() {
       );
     }
     
-    await loadData();
+    // Refresh activities from store
+    await dataStore.refreshActivities();
     // Refresh the selected activity
     const updated = activitiesWithContext.value.find(a => a.id === selectedActivity.value?.id);
     if (updated) {
@@ -285,18 +360,11 @@ async function saveChanges() {
     <!-- Notion-style Sidebar -->
     <NotionSidebar />
     
-    <div class="flex-1 flex overflow-hidden">
-      <!-- Main Content Area -->
-      <div class="flex-1 flex flex-col bg-white overflow-hidden min-w-0">
-        <!-- Header -->
-        <div class="px-6 py-5 border-b border-gray-200 flex-shrink-0 bg-white">
-          <div class="flex items-center justify-between mb-5">
-            <div>
-              <h2 class="text-2xl font-bold text-gray-900 mb-1">Tasks</h2>
-              <p class="text-sm text-gray-500">Manage and track your assigned tasks</p>
-            </div>
-          </div>
-          
+    <div class="flex-1 flex flex-col bg-white overflow-hidden">
+      <!-- Header - Full width like Calendar -->
+      <div class="p-4 border-b flex-shrink-0">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-bold">Tasks</h2>
           <!-- Filters -->
           <div class="flex items-center gap-4">
             <div class="flex items-center gap-2">
@@ -334,41 +402,89 @@ async function saveChanges() {
             </div>
           </div>
         </div>
+      </div>
 
+      <!-- Tasks Table and Details -->
+      <div class="flex-1 flex overflow-hidden" style="min-height: 0;">
         <!-- Tasks Table -->
-        <div class="flex-1 overflow-auto">
-          <div v-if="loading" class="flex items-center justify-center h-full text-gray-600">Loading...</div>
+        <div class="flex-1 overflow-auto min-w-0">
+          <div v-if="dataStore.loading" class="flex items-center justify-center h-full text-gray-600">Loading...</div>
           <div v-else-if="filteredActivities.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400">
             <p class="text-lg mb-2">No tasks found</p>
             <p class="text-sm">Try adjusting your filters</p>
           </div>
-          <div v-else class="w-full" :style="selectedActivity ? { minWidth: '950px' } : {}">
+          <div v-else class="w-full min-w-0">
             <!-- Table Header -->
             <div class="sticky top-0 bg-white border-b border-gray-200 z-10">
-              <div class="grid gap-3 px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                   :style="selectedActivity 
-                     ? { gridTemplateColumns: '180px 240px 140px 110px 90px 90px 60px' }
-                     : { gridTemplateColumns: '180px 240px 140px 110px 90px 90px 60px' }">
-                <div>Objective</div>
-                <div>Task</div>
-                <div>Assignee</div>
-                <div>Status</div>
-                <div class="text-center">Start Date</div>
-                <div class="text-center">End Date</div>
-                <div class="text-center">Due</div>
+              <div class="grid gap-3 px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-0"
+                   style="grid-template-columns: 2fr 2.7fr 1.5fr 1.2fr 1fr 1fr 0.6fr;">
+                <div 
+                  class="flex items-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
+                  :class="getSortClass('objective')"
+                  @click="handleSort('objective')"
+                >
+                  <span>Objective</span>
+                  <span class="text-xs">{{ getSortIcon('objective') }}</span>
+                </div>
+                <div 
+                  class="flex items-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
+                  :class="getSortClass('task')"
+                  @click="handleSort('task')"
+                >
+                  <span>Task</span>
+                  <span class="text-xs">{{ getSortIcon('task') }}</span>
+                </div>
+                <div 
+                  class="flex items-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
+                  :class="getSortClass('assignee')"
+                  @click="handleSort('assignee')"
+                >
+                  <span>Assignee</span>
+                  <span class="text-xs">{{ getSortIcon('assignee') }}</span>
+                </div>
+                <div 
+                  class="flex items-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
+                  :class="getSortClass('status')"
+                  @click="handleSort('status')"
+                >
+                  <span>Status</span>
+                  <span class="text-xs">{{ getSortIcon('status') }}</span>
+                </div>
+                <div 
+                  class="text-center flex items-center justify-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
+                  :class="getSortClass('startDate')"
+                  @click="handleSort('startDate')"
+                >
+                  <span>Start Date</span>
+                  <span class="text-xs">{{ getSortIcon('startDate') }}</span>
+                </div>
+                <div 
+                  class="text-center flex items-center justify-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
+                  :class="getSortClass('endDate')"
+                  @click="handleSort('endDate')"
+                >
+                  <span>End Date</span>
+                  <span class="text-xs">{{ getSortIcon('endDate') }}</span>
+                </div>
+                <div 
+                  class="text-center flex items-center justify-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
+                  :class="getSortClass('due')"
+                  @click="handleSort('due')"
+                >
+                  <span>Due</span>
+                  <span class="text-xs">{{ getSortIcon('due') }}</span>
+                </div>
               </div>
             </div>
             
             <!-- Table Rows -->
-            <div class="divide-y divide-gray-100">
+            <div class="divide-y divide-gray-100 min-w-0">
               <div
                 v-for="activity in filteredActivities"
                 :key="activity.id"
                 @click="selectActivity(activity)"
-                class="grid gap-3 px-6 py-3 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-50"
-                :style="selectedActivity 
-                  ? { gridTemplateColumns: '180px 240px 140px 110px 90px 90px 60px' }
-                  : { gridTemplateColumns: '180px 240px 140px 110px 90px 90px 60px' }"
+                class="grid gap-3 px-6 py-3 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-50 min-w-0"
+                style="grid-template-columns: 2fr 2.7fr 1.5fr 1.2fr 1fr 1fr 0.6fr;"
                 :class="selectedActivity?.id === activity.id ? 'bg-blue-50' : 'bg-white'"
               >
                 <div class="flex items-center min-w-0">
@@ -416,26 +532,25 @@ async function saveChanges() {
             </div>
           </div>
         </div>
-      </div>
-      
-      <!-- Detail Panel - Pushes content left -->
-      <div 
-        v-if="selectedActivity"
-        class="w-96 border-l bg-gray-50 flex flex-col overflow-hidden flex-shrink-0"
-      >
-        <div class="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
-          <h3 class="text-lg font-semibold">Task Details</h3>
-          <button
-            @click="closeDetailPanel"
-            class="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
         
-        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+        <!-- Detail Panel - Sits to the right like Calendar -->
+        <div 
+          v-if="selectedActivity"
+          class="w-96 border-l bg-gray-50 flex flex-col overflow-hidden flex-shrink-0"
+        >
+          <div class="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
+            <h3 class="text-lg font-semibold">Task Details</h3>
+            <button
+              @click="closeDetailPanel"
+              class="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div class="flex-1 overflow-y-auto px-6 py-3 space-y-6">
           <!-- Title -->
           <div>
             <h4 class="text-xl font-bold mb-2">{{ selectedActivity.title }}</h4>
@@ -510,9 +625,10 @@ async function saveChanges() {
             </div>
           
           <!-- Status and Assignee -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Status</div>
+          <div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Status</div>
               <select
                 v-if="isEditing"
                 v-model="editStatus"
@@ -546,12 +662,14 @@ async function saveChanges() {
                   {{ profile.full_name || profile.email || profile.id }}
                 </option>
               </select>
-              <div v-else class="text-sm text-gray-900">{{ getProfileName(selectedActivity.assignee_id) }}</div>
+                <div v-else class="text-sm text-gray-900">{{ getProfileName(selectedActivity.assignee_id) }}</div>
+              </div>
             </div>
           </div>
           
           <!-- Start Date - Due Date - Due -->
-          <div class="grid grid-cols-3 gap-4">
+          <div>
+            <div class="grid grid-cols-3 gap-4">
             <div>
               <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Start Date</div>
               <input
@@ -582,7 +700,8 @@ async function saveChanges() {
                   ? 'text-red-600' 
                   : 'text-green-600'"
               >
-                {{ formatDaysUntilDue(selectedActivity.end_date) }} {{ getDaysUntilDue(selectedActivity.end_date)! < 0 ? 'days overdue' : 'days' }}
+                  {{ formatDaysUntilDue(selectedActivity.end_date) }} {{ getDaysUntilDue(selectedActivity.end_date)! < 0 ? 'days overdue' : 'days' }}
+                </div>
               </div>
             </div>
           </div>
@@ -626,6 +745,7 @@ async function saveChanges() {
                 </button>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

@@ -1,15 +1,38 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue';
+import { onMounted, computed, ref, watch } from 'vue';
 import { useAuthStore } from '@/stores/auth';
+import { useDataStore } from '@/stores/data';
 import { supabase } from '@/lib/supabaseClient';
 import AppLayout from '@/components/layout/AppLayout.vue';
 
 const auth = useAuthStore();
+const dataStore = useDataStore();
 const email = ref('');
 const password = ref('');
 const errorMsg = ref('');
 
-onMounted(() => auth.init());
+onMounted(async () => {
+  await auth.init();
+  // If session exists on mount (e.g., page refresh), load data immediately
+  if (auth.session && !dataStore.loaded) {
+    try {
+      await dataStore.loadAll();
+    } catch (e) {
+      console.error('Failed to preload data:', e);
+    }
+  }
+});
+
+// Load all data when user is authenticated
+watch(() => auth.session, async (session) => {
+  if (session && !dataStore.loaded) {
+    try {
+      await dataStore.loadAll();
+    } catch (e) {
+      console.error('Failed to preload data:', e);
+    }
+  }
+});
 
 const isAuthed = computed(() => !!auth.session);
 

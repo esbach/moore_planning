@@ -1,19 +1,31 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import { listOutputs } from '@/api/outputs';
-import { listAllActivities } from '@/api/activities';
-import { listObjectives } from '@/api/objectives';
-import { listOutcomes } from '@/api/outcomes';
+import { computed, watch } from 'vue';
 import { useProjectStore } from '@/stores/project';
+import { useDataStore } from '@/stores/data';
 import type { Objective, Output, Activity, Outcome, ActivityStatus } from '@/types';
 
 const props = defineProps<{ objective: Objective }>();
 const projectStore = useProjectStore();
+const dataStore = useDataStore();
 
-const outputs = ref<Output[]>([]);
-const allActivities = ref<Activity[]>([]);
-const outcome = ref<Outcome | null>(null);
-const loading = ref(false);
+// Get outputs from data store
+const outputs = computed(() => dataStore.outputsByObjective(props.objective.id));
+
+// Get all activities for this objective (through all outputs)
+const allActivities = computed(() => {
+  const allOutputIds = outputs.value.map(o => o.id);
+  return dataStore.activities.filter(a => allOutputIds.includes(a.output_id));
+});
+
+// Get first outcome from data store
+const outcome = computed(() => {
+  if (!projectStore.currentProject) return null;
+  const outcomes = dataStore.outcomesByProject(projectStore.currentProject.id);
+  return outcomes[0] || null;
+});
+
+// Loading state from data store
+const loading = computed(() => dataStore.loading);
 
 // Status order for ranking (higher = more complete)
 const statusOrder: Record<ActivityStatus, number> = {
@@ -47,28 +59,7 @@ interface ObjectiveProgress {
   completionRate: number;
 }
 
-async function loadData() {
-  if (!projectStore.currentProject) return;
-  
-  loading.value = true;
-  try {
-    // Load outcome
-    const outcomes = await listOutcomes(projectStore.currentProject.id);
-    outcome.value = outcomes[0] || null;
-    
-    // Load outputs for this objective
-    outputs.value = await listOutputs(props.objective.id);
-    
-    // Load all activities for this objective (through all outputs)
-    const allOutputIds = outputs.value.map(o => o.id);
-    const allActs = await listAllActivities();
-    allActivities.value = allActs.filter(a => allOutputIds.includes(a.output_id));
-  } catch (e) {
-    console.error('Failed to load progress data:', e);
-  } finally {
-    loading.value = false;
-  }
-}
+// Data is already loaded in store, no need for loadData function
 
 function calculateStatusCount(activities: Activity[]): StatusCount {
   const count: StatusCount = {
@@ -130,8 +121,7 @@ const objectiveProgress = computed((): ObjectiveProgress => {
   };
 });
 
-onMounted(loadData);
-watch(() => props.objective.id, loadData);
+// Data is automatically reactive from the store
 </script>
 
 <template>

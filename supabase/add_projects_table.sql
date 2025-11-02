@@ -56,3 +56,4 @@ end $$;
 comment on table public.projects is 'Top-level projects that contain outcomes';
 comment on column public.outcomes.project_id is 'The project this outcome belongs to';
 
+

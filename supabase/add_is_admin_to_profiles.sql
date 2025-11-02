@@ -6,3 +6,4 @@ alter table public.profiles
 comment on column public.profiles.is_admin is 'Whether this user has admin privileges';
 
 
+

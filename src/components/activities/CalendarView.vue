@@ -4,14 +4,14 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { ref, onMounted, computed, watch } from 'vue';
-import { listAllActivities, updateActivity } from '@/api/activities';
-import { listProfiles } from '@/api/profiles';
+import { updateActivity } from '@/api/activities';
 import { useAuthStore } from '@/stores/auth';
-import { supabase } from '@/lib/supabaseClient';
+import { useDataStore } from '@/stores/data';
 import NotionSidebar from '@/components/layout/NotionSidebar.vue';
-import type { Activity, Profile, Output, Objective, ActivityStatus } from '@/types';
+import type { Activity, Output, Objective, ActivityStatus } from '@/types';
 
 const auth = useAuthStore();
+const dataStore = useDataStore();
 
 interface ActivityWithContext extends Activity {
   objectiveNumber: string | null;
@@ -20,13 +20,9 @@ interface ActivityWithContext extends Activity {
 }
 
 const events = ref<any[]>([]);
-const loading = ref(true);
 const calendarError = ref<string | null>(null);
 const calendarReady = ref(false);
 const selectedActivity = ref<ActivityWithContext | null>(null);
-const allActivities = ref<Activity[]>([]);
-const activitiesWithContext = ref<ActivityWithContext[]>([]);
-const profiles = ref<Profile[]>([]);
 
 // Inline editing state
 const isEditing = ref(false);
@@ -52,66 +48,48 @@ const calendarOptions = computed(() => ({
 
 function handleEventClick(arg: any) {
   const activityId = arg.event.id;
-  selectedActivity.value = activitiesWithContext.value.find(a => a.id === activityId) || null;
+  const activity = activitiesWithContext.value.find(a => a.id === activityId);
+  selectedActivity.value = activity || null;
 }
 
-async function load() {
-  try {
-    loading.value = true;
-    const acts = await listAllActivities();
-    profiles.value = await listProfiles();
+// Computed for activities with context
+const activitiesWithContext = computed(() => {
+  const outputMap = new Map<string, Output>(dataStore.outputs.map(o => [o.id, o]));
+  const objectiveMap = new Map<string, Objective>(dataStore.objectives.map(o => [o.id, o]));
+  
+  return dataStore.activities.map(activity => {
+    const output = outputMap.get(activity.output_id);
+    const objective = output ? objectiveMap.get(output.objective_id) : null;
     
-    // Fetch all outputs and objectives to build context
-    const { data: outputs } = await supabase.from('outputs').select('*');
-    const { data: objectives } = await supabase.from('objectives').select('*');
-    
-    if (!outputs || !objectives) {
-      throw new Error('Failed to load outputs or objectives');
-    }
-    
-    // Build maps for quick lookup
-    const outputMap = new Map<string, Output>(outputs.map(o => [o.id, o]));
-    const objectiveMap = new Map<string, Objective>(objectives.map(o => [o.id, o]));
-    
-    // Enrich activities with context
-    activitiesWithContext.value = acts.map(activity => {
-      const output = outputMap.get(activity.output_id);
-      const objective = output ? objectiveMap.get(output.objective_id) : null;
-      
-      return {
-        ...activity,
-        objectiveNumber: objective 
-          ? (objective.short_name || (objective.index !== null && objective.index !== undefined ? `Obj ${objective.index + 1}` : null))
-          : null,
-        objectiveTitle: objective?.title || null,
-        outputTitle: output?.title || null,
-      };
-    });
-    
-    allActivities.value = acts;
-    events.value = acts
-      .filter(a => a.start_date) // Only show activities with dates
-      .map(a => ({
-        id: a.id,
-        title: a.title,
-        start: a.start_date!,
-        end: a.end_date ?? a.start_date!,
-        backgroundColor: getStatusColorForCalendar(a.status),
-        extendedProps: a,
-      }));
-    
-    // Refresh selected activity if it exists
-    if (selectedActivity.value) {
-      const updated = activitiesWithContext.value.find(a => a.id === selectedActivity.value?.id);
-      if (updated) {
-        selectedActivity.value = updated;
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load activities:', e);
-  } finally {
-    loading.value = false;
-  }
+    return {
+      ...activity,
+      objectiveNumber: objective 
+        ? (objective.short_name || (objective.index !== null && objective.index !== undefined ? `Obj ${objective.index + 1}` : null))
+        : null,
+      objectiveTitle: objective?.title || null,
+      outputTitle: output?.title || null,
+    };
+  });
+});
+
+// Profiles from data store
+const profiles = computed(() => dataStore.profiles);
+
+// Loading state from data store
+const loading = computed(() => dataStore.loading);
+
+function load() {
+  events.value = dataStore.activities
+    .filter(a => a.start_date) // Only show activities with dates
+    .map(a => ({
+      id: a.id,
+      title: a.title,
+      start: a.start_date!,
+      end: a.end_date ?? a.start_date!,
+      backgroundColor: getStatusColorForCalendar(a.status),
+      borderColor: 'transparent', // Remove borders
+      extendedProps: a,
+    }));
 }
 
 function getStatusColor(status: string) {
@@ -126,14 +104,15 @@ function getStatusColor(status: string) {
 }
 
 function getStatusColorForCalendar(status: string) {
+  // More transparent colors (using rgba with 70% opacity - 30% transparent)
   const colors = {
-    'not_started': '#9ca3af',
-    'started': '#60a5fa',
-    'in_progress': '#3b82f6',
-    'review': '#fbbf24',
-    'complete': '#10b981'
+    'not_started': 'rgba(156, 163, 175, 0.7)', // gray-400 with 70% opacity
+    'started': 'rgba(96, 165, 250, 0.7)', // blue-400 with 70% opacity
+    'in_progress': 'rgba(59, 130, 246, 0.7)', // blue-500 with 70% opacity
+    'review': 'rgba(251, 191, 36, 0.7)', // yellow-400 with 70% opacity
+    'complete': 'rgba(16, 185, 129, 0.7)' // green-500 with 70% opacity
   };
-  return colors[status as keyof typeof colors] || '#9ca3af';
+  return colors[status as keyof typeof colors] || 'rgba(156, 163, 175, 0.7)';
 }
 
 function formatStatus(status: string) {
@@ -152,7 +131,7 @@ function formatStatus(status: string) {
 
 function getProfileName(profileId: string | null) {
   if (!profileId) return 'Unassigned';
-  const profile = profiles.value.find(p => p.id === profileId);
+  const profile = dataStore.profileById(profileId);
   return profile?.full_name || profile?.email || 'Unknown';
 }
 
@@ -231,7 +210,10 @@ async function saveChanges() {
       );
     }
     
-    await load();
+    // Refresh activities from store
+    await dataStore.refreshActivities();
+    await dataStore.refreshProgressUpdates();
+    load(); // Reload events
     isEditing.value = false;
     editNotes.value = '';
   } catch (e) {
@@ -250,9 +232,9 @@ watch(() => selectedActivity.value?.id, () => {
   outputExpanded.value = true; // Reset to open
 });
 
-onMounted(async () => {
+onMounted(() => {
   try {
-    await load();
+    load();
     calendarReady.value = true;
   } catch (e: any) {
     console.error('Calendar initialization error:', e);
@@ -268,10 +250,12 @@ async function onEventDrop(arg: any) {
       start_date: ev.startStr?.slice(0, 10) ?? null,
       end_date: ev.endStr ? ev.endStr.slice(0, 10) : ev.startStr?.slice(0, 10) ?? null,
     });
-    await load();
+    await dataStore.refreshActivities();
+    load();
   } catch (e) {
     console.error('Failed to update activity:', e);
-    await load(); // Reload to revert
+    await dataStore.refreshActivities();
+    load(); // Reload to revert
   }
 }
 
@@ -282,10 +266,12 @@ async function onEventResize(arg: any) {
       start_date: ev.startStr?.slice(0, 10) ?? null,
       end_date: ev.endStr ? ev.endStr.slice(0, 10) : ev.startStr?.slice(0, 10) ?? null,
     });
-    await load();
+    await dataStore.refreshActivities();
+    load();
   } catch (e) {
     console.error('Failed to update activity:', e);
-    await load(); // Reload to revert
+    await dataStore.refreshActivities();
+    load(); // Reload to revert
   }
 }
 </script>
@@ -367,7 +353,7 @@ async function onEventResize(arg: any) {
             </button>
           </div>
           
-          <div class="flex-1 overflow-y-auto p-4 space-y-6">
+          <div class="flex-1 overflow-y-auto px-6 py-3 space-y-6">
             <!-- Title -->
             <div>
               <h4 class="text-xl font-bold mb-2">{{ selectedActivity.title }}</h4>
@@ -442,9 +428,10 @@ async function onEventResize(arg: any) {
             </div>
             
             <!-- Status and Assignee -->
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Status</div>
+            <div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Status</div>
                 <select
                   v-if="isEditing"
                   v-model="editStatus"
@@ -478,12 +465,14 @@ async function onEventResize(arg: any) {
                     {{ profile.full_name || profile.email || profile.id }}
                   </option>
                 </select>
-                <div v-else class="text-sm text-gray-900">{{ getProfileName(selectedActivity.assignee_id) }}</div>
+                  <div v-else class="text-sm text-gray-900">{{ getProfileName(selectedActivity.assignee_id) }}</div>
+                </div>
               </div>
             </div>
             
             <!-- Start Date - Due Date - Due -->
-            <div class="grid grid-cols-3 gap-4">
+            <div>
+              <div class="grid grid-cols-3 gap-4">
               <div>
                 <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Start Date</div>
                 <input
@@ -514,7 +503,8 @@ async function onEventResize(arg: any) {
                     ? 'text-red-600' 
                     : 'text-green-600'"
                 >
-                  {{ formatDaysUntilDue(selectedActivity.end_date) }} {{ getDaysUntilDue(selectedActivity.end_date)! < 0 ? 'days overdue' : 'days' }}
+                    {{ formatDaysUntilDue(selectedActivity.end_date) }} {{ getDaysUntilDue(selectedActivity.end_date)! < 0 ? 'days overdue' : 'days' }}
+                  </div>
                 </div>
               </div>
             </div>

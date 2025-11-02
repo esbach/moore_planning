@@ -1,20 +1,56 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useProjectStore } from '@/stores/project';
+import { useDataStore } from '@/stores/data';
 import { createProject } from '@/api/projects';
+import type { Project } from '@/types';
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 const projectStore = useProjectStore();
+const dataStore = useDataStore();
 
 const currentPath = computed(() => route.path);
 const isAdmin = computed(() => auth.profile?.is_admin === true);
 const showNewProjectForm = ref(false);
 const newProjectName = ref('');
 const newProjectDescription = ref('');
+
+// Get all projects sorted by created_at (most recent first)
+const projects = computed(() => {
+  return [...dataStore.projects].sort((a, b) => {
+    const dateA = new Date(a.created_at).getTime();
+    const dateB = new Date(b.created_at).getTime();
+    return dateB - dateA; // Most recent first
+  });
+});
+
+// Auto-select project when data is loaded and projects are available
+watch([() => dataStore.loaded, () => projects.value.length], ([loaded, length]) => {
+  if (loaded && length > 0 && !projectStore.currentProject) {
+    // Sort projects by created_at (most recent first) and select the first one
+    const sortedProjects = [...projects.value].sort((a, b) => {
+      const dateA = new Date(a.created_at).getTime();
+      const dateB = new Date(b.created_at).getTime();
+      return dateB - dateA; // Most recent first
+    });
+    if (sortedProjects.length > 0) {
+      projectStore.setCurrentProject(sortedProjects[0]);
+    }
+  }
+}, { immediate: true });
+
+onMounted(() => {
+  // Projects are loaded automatically by the data store
+  projectStore.loadProjects();
+});
+
+function selectProject(project: Project) {
+  projectStore.setCurrentProject(project);
+}
 
 const navigationItems = [
   { path: '/structure', label: 'Outcome Table', icon: '📊' },
@@ -31,17 +67,14 @@ const userName = computed(() => {
   return auth.profile?.full_name || auth.profile?.email || 'User';
 });
 
-onMounted(async () => {
-  await projectStore.loadProjects();
-});
-
 async function handleCreateProject() {
   const name = newProjectName.value.trim();
   if (!name) return;
   
   try {
     await createProject(name, newProjectDescription.value.trim() || null);
-    await projectStore.loadProjects();
+    // Refresh projects from data store
+    await dataStore.refreshProjects();
     newProjectName.value = '';
     newProjectDescription.value = '';
     showNewProjectForm.value = false;
@@ -87,11 +120,31 @@ async function handleSignOut() {
       <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Projects</h3>
     </div>
 
-    <!-- Project Name Section -->
-    <div class="px-4 pb-4 flex-shrink-0">
-      <span class="text-sm font-medium text-gray-800 truncate">
-        {{ projectStore.currentProject?.name || 'No Project Selected' }}
-      </span>
+    <!-- Projects List -->
+    <div class="px-2 pb-3 flex-shrink-0">
+      <div v-if="dataStore.loading" class="px-2 py-2 text-xs text-gray-500">
+        Loading...
+      </div>
+      
+      <div v-else-if="projects.length === 0" class="px-2 py-2 text-xs text-gray-500">
+        No projects yet
+      </div>
+      
+      <div v-else class="space-y-1">
+        <div 
+          v-for="project in projects" 
+          :key="project.id" 
+          class="px-2 py-1.5 rounded cursor-pointer transition-colors"
+          :class="projectStore.currentProject?.id === project.id 
+            ? 'bg-gray-200 text-gray-900' 
+            : 'text-gray-700 hover:bg-gray-200'"
+          @click="selectProject(project)"
+        >
+          <span class="text-sm font-medium truncate block">
+            {{ project.name }}
+          </span>
+        </div>
+      </div>
     </div>
 
     <!-- Project-related Navigation (Indented) -->

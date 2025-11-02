@@ -1,20 +1,44 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useProjectStore } from '@/stores/project';
-import { listOutcomes } from '@/api/outcomes';
-import { listObjectives } from '@/api/objectives';
-import { listOutputs } from '@/api/outputs';
-import { listAllActivities } from '@/api/activities';
+import { useDataStore } from '@/stores/data';
 import NotionSidebar from '@/components/layout/NotionSidebar.vue';
-import type { Outcome, Objective, Output, Activity, ActivityStatus } from '@/types';
+import type { Objective, Output, Activity, ActivityStatus } from '@/types';
 
 const projectStore = useProjectStore();
-const outcomes = ref<Outcome[]>([]);
-const objectivesMap = ref<Record<string, Objective[]>>({});
-const outputsMap = ref<Record<string, Output[]>>({});
-const allActivities = ref<Activity[]>([]);
+const dataStore = useDataStore();
 const selectedObjectiveId = ref<string | null>(null);
-const loading = ref(false);
+
+// Get outcomes from data store
+const outcomes = computed(() => {
+  if (!projectStore.currentProject) return [];
+  return dataStore.outcomesByProject(projectStore.currentProject.id);
+});
+
+// Get objectives map from data store
+const objectivesMap = computed(() => {
+  const map: Record<string, Objective[]> = {};
+  outcomes.value.forEach(outcome => {
+    map[outcome.id] = dataStore.objectivesByOutcome(outcome.id);
+  });
+  return map;
+});
+
+// Get outputs map from data store
+const outputsMap = computed(() => {
+  const map: Record<string, Output[]> = {};
+  const allObjectives = Object.values(objectivesMap.value).flat();
+  allObjectives.forEach(obj => {
+    map[obj.id] = dataStore.outputsByObjective(obj.id);
+  });
+  return map;
+});
+
+// All activities from data store
+const allActivities = computed(() => dataStore.activities);
+
+// Loading state from data store
+const loading = computed(() => dataStore.loading);
 
 // Status order for ranking (higher = more complete)
 const statusOrder: Record<ActivityStatus, number> = {
@@ -48,41 +72,7 @@ interface ObjectiveProgress {
   completionRate: number;
 }
 
-async function loadData() {
-  if (!projectStore.currentProject) return;
-  
-  loading.value = true;
-  try {
-    // Load outcomes
-    outcomes.value = await listOutcomes(projectStore.currentProject.id);
-    
-    // Load objectives for all outcomes
-    const objectivesEntries = await Promise.all(
-      outcomes.value.map(async (outcome) => {
-        const objs = await listObjectives(outcome.id);
-        return [outcome.id, objs] as const;
-      })
-    );
-    objectivesMap.value = Object.fromEntries(objectivesEntries);
-    
-    // Load outputs for all objectives
-    const allObjectives = Object.values(objectivesMap.value).flat();
-    const outputsEntries = await Promise.all(
-      allObjectives.map(async (obj) => {
-        const outputs = await listOutputs(obj.id);
-        return [obj.id, outputs] as const;
-      })
-    );
-    outputsMap.value = Object.fromEntries(outputsEntries);
-    
-    // Load all activities
-    allActivities.value = await listAllActivities();
-  } catch (e) {
-    console.error('Failed to load progress data:', e);
-  } finally {
-    loading.value = false;
-  }
-}
+// Data is already loaded in store, no need for loadData function
 
 function calculateStatusCount(activities: Activity[]): StatusCount {
   const count: StatusCount = {
@@ -156,14 +146,9 @@ const selectedObjectiveProgress = computed(() => {
   ) || null;
 });
 
-onMounted(async () => {
-  await projectStore.loadProjects();
-  await loadData();
-});
-
+// Data is automatically reactive from the store
 watch(() => projectStore.currentProject, () => {
   selectedObjectiveId.value = null;
-  loadData();
 });
 </script>
 
@@ -371,4 +356,5 @@ watch(() => projectStore.currentProject, () => {
     </div>
   </div>
 </template>
+
 

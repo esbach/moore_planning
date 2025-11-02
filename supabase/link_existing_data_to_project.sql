@@ -47,3 +47,4 @@ FROM public.outcomes o
 LEFT JOIN public.projects p ON o.project_id = p.id
 ORDER BY o.title;
 
+

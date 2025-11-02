@@ -1,32 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { listProgressUpdates } from '@/api/progressUpdates';
-import { listProfiles } from '@/api/profiles';
-import type { ProgressUpdate, Profile } from '@/types';
+import { computed } from 'vue';
+import { useDataStore } from '@/stores/data';
+import type { ProgressUpdate } from '@/types';
 
 const props = defineProps<{ activityId: string }>();
 
-const updates = ref<ProgressUpdate[]>([]);
-const profiles = ref<Profile[]>([]);
-const loading = ref(false);
+const dataStore = useDataStore();
 
-async function loadUpdates() {
-  loading.value = true;
-  try {
-    updates.value = await listProgressUpdates(props.activityId);
-    profiles.value = await listProfiles();
-  } catch (e) {
-    console.error('Failed to load progress updates:', e);
-  } finally {
-    loading.value = false;
-  }
-}
+// Get progress updates from data store
+const updates = computed(() => dataStore.progressUpdatesByActivity(props.activityId));
 
-onMounted(loadUpdates);
+// Loading state from data store
+const loading = computed(() => dataStore.loading);
 
 function getProfileName(profileId: string | null) {
   if (!profileId) return 'Unknown';
-  const profile = profiles.value.find(p => p.id === profileId);
+  const profile = dataStore.profileById(profileId);
   return profile?.full_name || profile?.email || 'Unknown';
 }
 
