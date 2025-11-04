@@ -274,7 +274,12 @@ watch(() => projectStore.currentProject, () => {
                 class="border rounded-lg p-5 bg-white shadow-sm"
               >
                 <div class="flex items-center justify-between mb-3">
-                  <h5 class="font-semibold text-lg text-gray-900">{{ outputProg.output.title }}</h5>
+                  <div>
+                    <div v-if="outputProg.output.short_name || (outputProg.output.index !== null && outputProg.output.index !== undefined)" class="text-sm font-semibold text-gray-600 mb-1">
+                      Output: {{ outputProg.output.short_name || (outputProg.output.index !== null && outputProg.output.index !== undefined ? `Out ${outputProg.output.index + 1}` : 'Output') }}
+                    </div>
+                    <h5 class="font-semibold text-lg text-gray-900">{{ outputProg.output.title }}</h5>
+                  </div>
                   <div class="text-2xl font-bold text-gray-700">{{ outputProg.completionRate }}%</div>
                 </div>
                 

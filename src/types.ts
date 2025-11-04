@@ -30,6 +30,7 @@ export interface Output {
   title: string;
   description: string | null;
   index: number | null;
+  short_name: string | null;
 }
 
 export interface LinkItem { label: string; url: string }

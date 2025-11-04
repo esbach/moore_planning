@@ -197,7 +197,12 @@ const objectiveProgress = computed((): ObjectiveProgress => {
               class="border rounded-lg p-4 bg-white"
             >
               <div class="flex items-center justify-between mb-2">
-                <h5 class="font-medium text-sm text-gray-900">{{ outputProg.output.title }}</h5>
+                <div>
+                  <div v-if="outputProg.output.short_name || (outputProg.output.index !== null && outputProg.output.index !== undefined)" class="text-xs font-semibold text-gray-600 mb-1">
+                    Output: {{ outputProg.output.short_name || (outputProg.output.index !== null && outputProg.output.index !== undefined ? `Out ${outputProg.output.index + 1}` : 'Output') }}
+                  </div>
+                  <h5 class="font-medium text-sm text-gray-900">{{ outputProg.output.title }}</h5>
+                </div>
                 <div class="text-lg font-bold text-gray-700">{{ outputProg.completionRate }}%</div>
               </div>
               

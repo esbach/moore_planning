@@ -16,6 +16,7 @@ const dataStore = useDataStore();
 interface ActivityWithContext extends Activity {
   objectiveNumber: string | null;
   objectiveTitle: string | null;
+  outputNumber: string | null;
   outputTitle: string | null;
 }
 
@@ -67,6 +68,9 @@ const activitiesWithContext = computed(() => {
         ? (objective.short_name || (objective.index !== null && objective.index !== undefined ? `Obj ${objective.index + 1}` : null))
         : null,
       objectiveTitle: objective?.title || null,
+      outputNumber: output 
+        ? (output.short_name || (output.index !== null && output.index !== undefined ? `Out ${output.index + 1}` : null))
+        : null,
       outputTitle: output?.title || null,
     };
   });
@@ -421,6 +425,9 @@ async function onEventResize(arg: any) {
                 </div>
                 <div v-if="outputExpanded" class="px-3 pb-3 border-t bg-gray-50">
                   <div class="pt-3">
+                    <div v-if="selectedActivity.outputNumber" class="text-xs font-semibold text-gray-600 mb-1">
+                      Output: {{ selectedActivity.outputNumber }}
+                    </div>
                     <div class="text-sm text-gray-900">{{ selectedActivity.outputTitle }}</div>
                   </div>
                 </div>

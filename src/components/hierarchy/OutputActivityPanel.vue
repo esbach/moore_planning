@@ -96,6 +96,26 @@ async function renameOutput(output: Output) {
   await refreshData();
 }
 
+async function editOutputNumber(output: Output) {
+  const shortName = window.prompt('Short name or number (e.g., "A", "Alpha", "1"):', output.short_name || '');
+  if (shortName === null) return; // User cancelled
+  
+  const indexInput = window.prompt('Index number (for ordering, 0-based):', output.index !== null ? String(output.index) : '');
+  if (indexInput === null) return; // User cancelled
+  
+  const index = indexInput.trim() === '' ? null : parseInt(indexInput, 10);
+  if (indexInput.trim() !== '' && isNaN(index!)) {
+    alert('Invalid index number');
+    return;
+  }
+  
+  await updateOutput(output.id, { 
+    short_name: shortName.trim() || null,
+    index: index
+  });
+  await refreshData();
+}
+
 async function deleteOutputById(output: Output) {
   if (!confirm('Delete this output and all its activities?')) return;
   await deleteOutput(output.id);
@@ -228,7 +248,14 @@ function openTaskInTasksPage(activity: Activity) {
               }"
             >
               <div class="space-y-2">
-                <!-- Output title on top -->
+                <!-- Short name on top -->
+                <div v-if="output.short_name || (output.index !== null && output.index !== undefined)">
+                  <span class="text-xs font-semibold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                    {{ output.short_name || (output.index !== null && output.index !== undefined ? `Out ${output.index + 1}` : '') }}
+                  </span>
+                </div>
+                
+                <!-- Output title -->
                 <div class="font-medium text-sm text-gray-900">{{ output.title }}</div>
                 
                 <!-- Task count below -->
@@ -238,6 +265,13 @@ function openTaskInTasksPage(activity: Activity) {
                 
                 <!-- Edit buttons below - right aligned -->
                 <div v-if="isAdmin" class="flex gap-1 pt-1 justify-end">
+                  <button
+                    @click.stop="editOutputNumber(output)"
+                    class="text-green-600 hover:text-green-700 text-xs"
+                    title="Edit number/name"
+                  >
+                    🔢
+                  </button>
                   <button
                     @click.stop="renameOutput(output)"
                     class="text-blue-600 hover:text-blue-700 text-xs"
