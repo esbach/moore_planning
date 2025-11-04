@@ -25,6 +25,30 @@ function getStatusColorForCalendar(status: string) {
   return colors[status as keyof typeof colors] || 'rgba(156, 163, 175, 0.7)';
 }
 
+// Helper: Add 1 day to end date for FullCalendar (end is exclusive)
+function addDayForCalendar(dateStr: string | null): string | undefined {
+  if (!dateStr) return undefined;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + 1);
+  const yearStr = date.getFullYear();
+  const monthStr = String(date.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(date.getDate()).padStart(2, '0');
+  return `${yearStr}-${monthStr}-${dayStr}`;
+}
+
+// Helper: Subtract 1 day from FullCalendar end date (to convert back to inclusive)
+function subtractDayFromCalendar(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() - 1);
+  const yearStr = date.getFullYear();
+  const monthStr = String(date.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(date.getDate()).padStart(2, '0');
+  return `${yearStr}-${monthStr}-${dayStr}`;
+}
+
 // Events from data store
 const events = computed(() => {
   return dataStore.activities
@@ -33,7 +57,8 @@ const events = computed(() => {
       id: a.id,
       title: a.title,
       start: a.start_date ?? undefined,
-      end: a.end_date ?? a.start_date ?? undefined,
+      // FullCalendar's end is exclusive, so add 1 day to our inclusive end_date
+      end: a.end_date ? addDayForCalendar(a.end_date) : (a.start_date ? addDayForCalendar(a.start_date) : undefined),
       backgroundColor: getStatusColorForCalendar(a.status),
       borderColor: 'transparent', // Remove borders
       extendedProps: a,
@@ -56,17 +81,21 @@ onMounted(() => {
 
 async function onEventDrop(arg: any) {
   const ev = arg.event;
+  // FullCalendar's end is exclusive, so subtract 1 day to get our inclusive end_date
+  const endDateStr = ev.endStr ? ev.endStr.slice(0, 10) : null;
   await updateActivity(ev.id, {
     start_date: ev.startStr?.slice(0, 10) ?? null,
-    end_date: ev.endStr ? ev.endStr.slice(0, 10) : ev.startStr?.slice(0, 10) ?? null,
+    end_date: endDateStr ? subtractDayFromCalendar(endDateStr) : (ev.startStr?.slice(0, 10) ?? null),
   });
   await dataStore.refreshActivities();
 }
 async function onEventResize(arg: any) {
   const ev = arg.event;
+  // FullCalendar's end is exclusive, so subtract 1 day to get our inclusive end_date
+  const endDateStr = ev.endStr ? ev.endStr.slice(0, 10) : null;
   await updateActivity(ev.id, {
     start_date: ev.startStr?.slice(0, 10) ?? null,
-    end_date: ev.endStr ? ev.endStr.slice(0, 10) : ev.startStr?.slice(0, 10) ?? null,
+    end_date: endDateStr ? subtractDayFromCalendar(endDateStr) : (ev.startStr?.slice(0, 10) ?? null),
   });
   await dataStore.refreshActivities();
 }

@@ -168,7 +168,10 @@ function getProfileName(profileId: string | null) {
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleDateString();
+  // Parse date string as local date to avoid timezone issues
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString();
 }
 
 function getStatusColor(status: string) {
