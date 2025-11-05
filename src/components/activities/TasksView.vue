@@ -5,8 +5,9 @@ import { updateActivity } from '@/api/activities';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
 import { useProjectStore } from '@/stores/project';
+import { getProjectUsers } from '@/api/projects';
 import NotionSidebar from '@/components/layout/NotionSidebar.vue';
-import type { Activity, ActivityStatus, Output, Objective } from '@/types';
+import type { Activity, ActivityStatus, Output, Objective, ProjectUserWithProfile } from '@/types';
 
 const auth = useAuthStore();
 const dataStore = useDataStore();
@@ -44,6 +45,9 @@ const saving = ref(false);
 const objectiveExpanded = ref(false); // Default closed
 const outputExpanded = ref(true); // Default open
 
+// Project users for filtering
+const projectUsers = ref<ProjectUserWithProfile[]>([]);
+
 // Get activities for current project only
 const projectActivities = computed(() => {
   if (!projectStore.currentProject) return [];
@@ -75,8 +79,15 @@ const activitiesWithContext = computed(() => {
   });
 });
 
-// Profiles from data store
-const profiles = computed(() => dataStore.profiles);
+// Profiles from data store - filtered to only show project users
+const profiles = computed(() => {
+  if (!projectStore.currentProject) {
+    return dataStore.profiles;
+  }
+  
+  const projectUserIds = new Set(projectUsers.value.map(pu => pu.user_id));
+  return dataStore.profiles.filter(profile => projectUserIds.has(profile.id));
+});
 
 // Loading state from data store
 const loading = computed(() => dataStore.loading);
@@ -261,12 +272,22 @@ onMounted(() => {
 
 watch([statusFilter, selectedUserId], applyFilters);
 
-// Reset editing when activity changes
-watch(() => selectedActivity.value?.id, () => {
+// Reset editing when activity changes and load project users
+watch(() => selectedActivity.value?.id, async () => {
   isEditing.value = false;
   editNotes.value = '';
   objectiveExpanded.value = false; // Reset to closed
   outputExpanded.value = true; // Reset to open
+  
+  // Load project users when activity is selected (so they're ready for editing)
+  if (projectStore.currentProject?.id) {
+    try {
+      projectUsers.value = await getProjectUsers(projectStore.currentProject.id);
+    } catch (error) {
+      console.error('Failed to load project users:', error);
+      projectUsers.value = [];
+    }
+  }
 });
 
 // Watch for route query changes to open activity details
@@ -337,8 +358,19 @@ function closeDetailPanel() {
   isEditing.value = false;
 }
 
-function startEditing() {
+async function startEditing() {
   if (!selectedActivity.value) return;
+  
+  // Load project users when starting to edit
+  if (projectStore.currentProject?.id) {
+    try {
+      projectUsers.value = await getProjectUsers(projectStore.currentProject.id);
+    } catch (error) {
+      console.error('Failed to load project users:', error);
+      projectUsers.value = [];
+    }
+  }
+  
   isEditing.value = true;
   editStatus.value = selectedActivity.value.status;
   editAssigneeId.value = selectedActivity.value.assignee_id;
