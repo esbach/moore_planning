@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useDataStore } from '@/stores/data';
-import type { Activity, ActivityStatus, LinkItem } from '@/types';
+import { useProjectStore } from '@/stores/project';
+import { getProjectUsers } from '@/api/projects';
+import type { Activity, ActivityStatus, LinkItem, ProjectUserWithProfile } from '@/types';
 
 const props = defineProps<{ modelValue: boolean; outputId: string; initial?: Partial<Activity> }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'save', v: Partial<Activity>): void }>();
 
 const dataStore = useDataStore();
+const projectStore = useProjectStore();
 
 const title = ref(props.initial?.title ?? '');
 const description = ref(props.initial?.description ?? '');
@@ -16,8 +19,30 @@ const status = ref<ActivityStatus>(props.initial?.status ?? 'not_started');
 const links = ref<LinkItem[]>(Array.isArray(props.initial?.source_links) ? (props.initial!.source_links as LinkItem[]) : []);
 const assigneeId = ref<string | null>((props.initial?.assignee_id as string) ?? null);
 
-// Profiles from data store
-const profiles = computed(() => dataStore.profiles);
+// Project users for filtering
+const projectUsers = ref<ProjectUserWithProfile[]>([]);
+
+// Load project users when component is shown or project changes
+watch(() => [props.modelValue, projectStore.currentProject], async ([show, project]) => {
+  if (show && project?.id) {
+    try {
+      projectUsers.value = await getProjectUsers(project.id);
+    } catch (error) {
+      console.error('Failed to load project users:', error);
+      projectUsers.value = [];
+    }
+  }
+}, { immediate: true });
+
+// Filter profiles to only show users associated with the current project
+const profiles = computed(() => {
+  if (!projectStore.currentProject) {
+    return dataStore.profiles;
+  }
+  
+  const projectUserIds = new Set(projectUsers.value.map(pu => pu.user_id));
+  return dataStore.profiles.filter(profile => projectUserIds.has(profile.id));
+});
 
 watch(() => props.initial, (val) => {
   title.value = val?.title ?? '';
