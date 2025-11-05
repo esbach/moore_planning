@@ -73,6 +73,13 @@ const profiles = computed(() => dataStore.profiles);
 // Loading state from data store
 const loading = computed(() => dataStore.loading);
 
+// Get progress updates for selected activity
+const activityUpdates = computed(() => {
+  if (!selectedActivity.value) return [];
+  return dataStore.progressUpdatesByActivity(selectedActivity.value.id)
+    .filter(update => update.notes && update.notes.trim() !== '');
+});
+
 function loadData() {
   // Data is already loaded in store, just apply filters
   applyFilters();
@@ -367,6 +374,7 @@ async function saveChanges() {
     
     // Refresh activities from store
     await dataStore.refreshActivities();
+    await dataStore.refreshProgressUpdates();
     // Refresh the selected activity
     const updated = activitiesWithContext.value.find(a => a.id === selectedActivity.value?.id);
     if (updated) {
@@ -445,7 +453,7 @@ async function saveChanges() {
             <!-- Table Header -->
             <div class="sticky top-0 bg-white border-b border-gray-200 z-10">
               <div class="grid gap-3 px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-0"
-                   style="grid-template-columns: 2fr 2.7fr 1.5fr 1.2fr 1fr 1fr 0.6fr;">
+                   style="grid-template-columns: 2fr 2.4fr 1.5fr 1.2fr 1.2fr 1.2fr 0.6fr;">
                 <div 
                   class="flex items-center gap-1 cursor-pointer hover:text-gray-700 select-none transition-colors"
                   :class="getSortClass('objective')"
@@ -512,7 +520,7 @@ async function saveChanges() {
                 :key="activity.id"
                 @click="selectActivity(activity)"
                 class="grid gap-3 px-6 py-3 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-50 min-w-0"
-                style="grid-template-columns: 2fr 2.7fr 1.5fr 1.2fr 1fr 1fr 0.6fr;"
+                style="grid-template-columns: 2fr 2.4fr 1.5fr 1.2fr 1.2fr 1.2fr 0.6fr;"
                 :class="selectedActivity?.id === activity.id ? 'bg-blue-50' : 'bg-white'"
               >
                 <div class="flex items-center min-w-0">
@@ -546,7 +554,13 @@ async function saveChanges() {
                 </div>
                 <div class="flex items-center justify-center">
                   <span 
-                    v-if="activity.end_date"
+                    v-if="activity.status === 'complete'"
+                    class="text-sm text-gray-400"
+                  >
+                    ✓
+                  </span>
+                  <span 
+                    v-else-if="activity.end_date"
                     class="px-2.5 py-0.5 rounded text-xs font-medium whitespace-nowrap"
                     :class="getDaysUntilDue(activity.end_date)! < 0 
                       ? 'text-red-600 bg-red-50' 
@@ -582,7 +596,7 @@ async function saveChanges() {
           <!-- Title -->
           <div>
             <h4 class="text-xl font-bold mb-2">{{ selectedActivity.title }}</h4>
-            <div v-if="!isEditing && selectedActivity.description" class="text-sm text-gray-600 whitespace-pre-wrap">{{ selectedActivity.description }}</div>
+            <div v-if="!isEditing && selectedActivity.description" class="text-sm text-gray-600 whitespace-pre-wrap mb-3">{{ selectedActivity.description }}</div>
             <textarea
               v-else-if="isEditing"
               v-model="editDescription"
@@ -590,6 +604,12 @@ async function saveChanges() {
               rows="3"
               placeholder="Description"
             />
+            <!-- Display Updates -->
+            <div v-if="!isEditing && activityUpdates.length > 0" class="mt-3 space-y-2">
+              <div v-for="update in activityUpdates" :key="update.id" class="text-sm text-gray-600 whitespace-pre-wrap">
+                <span class="font-medium">Update:</span> {{ update.notes }}
+              </div>
+            </div>
           </div>
           
             <!-- Context with Accordions -->
@@ -744,13 +764,13 @@ async function saveChanges() {
                 @click="startEditing"
                 class="w-full bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm"
               >
-                Edit Details
+                Update
               </button>
             </div>
             
             <div v-else class="space-y-3">
               <div>
-                <label class="text-xs font-semibold text-gray-500 uppercase mb-1 block">Notes (optional)</label>
+                <label class="text-xs font-semibold text-gray-500 uppercase mb-1 block">Updates</label>
                 <textarea
                   v-model="editNotes"
                   class="w-full border rounded px-3 py-2 text-sm resize-none"

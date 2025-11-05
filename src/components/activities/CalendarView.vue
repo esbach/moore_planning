@@ -82,6 +82,13 @@ const profiles = computed(() => dataStore.profiles);
 // Loading state from data store
 const loading = computed(() => dataStore.loading);
 
+// Get progress updates for selected activity
+const activityUpdates = computed(() => {
+  if (!selectedActivity.value) return [];
+  return dataStore.progressUpdatesByActivity(selectedActivity.value.id)
+    .filter(update => update.notes && update.notes.trim() !== '');
+});
+
 // Helper: Add 1 day to end date for FullCalendar (end is exclusive)
 function addDayForCalendar(dateStr: string | null): string | undefined {
   if (!dateStr) return undefined;
@@ -373,7 +380,7 @@ async function onEventResize(arg: any) {
           </div>
         </div>
         
-        <!-- Details Sidebar - Same as ActivitiesView -->
+        <!-- Details Sidebar - Same as TasksView -->
         <div 
           v-if="selectedActivity"
           class="w-96 border-l bg-gray-50 flex flex-col overflow-hidden flex-shrink-0"
@@ -394,7 +401,7 @@ async function onEventResize(arg: any) {
             <!-- Title -->
             <div>
               <h4 class="text-xl font-bold mb-2">{{ selectedActivity.title }}</h4>
-              <div v-if="!isEditing && selectedActivity.description" class="text-sm text-gray-600 whitespace-pre-wrap">{{ selectedActivity.description }}</div>
+              <div v-if="!isEditing && selectedActivity.description" class="text-sm text-gray-600 whitespace-pre-wrap mb-3">{{ selectedActivity.description }}</div>
               <textarea
                 v-else-if="isEditing"
                 v-model="editDescription"
@@ -402,6 +409,12 @@ async function onEventResize(arg: any) {
                 rows="3"
                 placeholder="Description"
               />
+              <!-- Display Updates -->
+              <div v-if="!isEditing && activityUpdates.length > 0" class="mt-3 space-y-2">
+                <div v-for="update in activityUpdates" :key="update.id" class="text-sm text-gray-600 whitespace-pre-wrap">
+                  <span class="font-medium">Update:</span> {{ update.notes }}
+                </div>
+              </div>
             </div>
             
             <!-- Context with Accordions -->
@@ -556,13 +569,13 @@ async function onEventResize(arg: any) {
                   @click="startEditing"
                   class="w-full bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm"
                 >
-                  Edit Details
+                  Update
                 </button>
               </div>
               
               <div v-else class="space-y-3">
                 <div>
-                  <label class="text-xs font-semibold text-gray-500 uppercase mb-1 block">Notes (optional)</label>
+                  <label class="text-xs font-semibold text-gray-500 uppercase mb-1 block">Updates</label>
                   <textarea
                     v-model="editNotes"
                     class="w-full border rounded px-3 py-2 text-sm resize-none"
