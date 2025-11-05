@@ -746,6 +746,13 @@ async function saveChanges() {
             <div v-if="selectedActivity.end_date && !isEditing">
               <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Due</div>
               <div 
+                v-if="selectedActivity.status === 'complete'"
+                class="text-sm text-gray-400"
+              >
+                ✓
+              </div>
+              <div 
+                v-else
                 class="text-sm font-medium"
                 :class="getDaysUntilDue(selectedActivity.end_date)! < 0 
                   ? 'text-red-600' 
