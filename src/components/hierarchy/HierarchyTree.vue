@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { createObjective, deleteObjective, updateObjective } from '@/api/objectives';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
+import { isProjectAdmin } from '@/api/projects';
 import type { Objective } from '@/types';
 
 const props = defineProps<{
@@ -14,8 +15,24 @@ const dataStore = useDataStore();
 const emit = defineEmits<{ (e: 'objective-selected', objective: Objective | null): void }>();
 
 const selectedObjectiveId = ref<string | null>(null);
+const isProjectLead = ref(false);
 
 const isAdmin = computed(() => auth.profile?.is_admin === true);
+const canManage = computed(() => isAdmin.value || isProjectLead.value);
+
+// Check project admin status
+watch(() => props.projectId, async (projectId) => {
+  if (projectId) {
+    try {
+      isProjectLead.value = await isProjectAdmin(projectId);
+    } catch (error) {
+      console.error('Failed to check project admin status:', error);
+      isProjectLead.value = false;
+    }
+  } else {
+    isProjectLead.value = false;
+  }
+}, { immediate: true });
 
 // UI state
 const newObjectiveTitle = ref('');
@@ -142,7 +159,7 @@ function selectObjective(objective: Objective) {
       <div class="p-4 border-b h-14 flex items-center justify-between">
         <h3 class="font-semibold">Objectives</h3>
         <button 
-          v-if="isAdmin && firstOutcome"
+          v-if="canManage && firstOutcome"
           @click="startAddObjective()" 
           class="bg-blue-600 text-white w-8 h-8 rounded hover:bg-blue-700 flex items-center justify-center text-lg font-semibold"
           title="Add Objective"
@@ -152,7 +169,7 @@ function selectObjective(objective: Objective) {
       </div>
 
       <!-- Add Objective Form -->
-      <div v-if="isAdmin && showingNewObjective" class="p-4 border-b bg-gray-50">
+      <div v-if="canManage && showingNewObjective" class="p-4 border-b bg-gray-50">
         <input
           v-model="newObjectiveTitle"
           class="border rounded px-3 py-2 text-sm w-full mb-2"
@@ -194,7 +211,7 @@ function selectObjective(objective: Objective) {
             <div class="font-medium text-sm text-gray-900">{{ obj.title }}</div>
             
             <!-- Edit buttons below - right aligned -->
-            <div v-if="isAdmin" class="flex gap-1 pt-1 justify-end">
+            <div v-if="canManage" class="flex gap-1 pt-1 justify-end">
               <button
                 @click.stop="editObjectiveNumber(obj)"
                 class="text-green-600 hover:text-green-700 text-xs"
@@ -221,7 +238,7 @@ function selectObjective(objective: Objective) {
         </div>
 
         <div v-if="allObjectives.length === 0" class="text-center py-8 text-gray-500 text-sm">
-          No objectives yet. {{ isAdmin && firstOutcome ? 'Create an objective to get started.' : (firstOutcome ? '' : 'Create an outcome first.') }}
+          No objectives yet. {{ canManage && firstOutcome ? 'Create an objective to get started.' : (firstOutcome ? '' : 'Create an outcome first.') }}
         </div>
       </div>
     </div>

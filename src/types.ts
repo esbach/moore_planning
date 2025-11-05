@@ -69,4 +69,18 @@ export interface ProgressUpdate {
   created_at: string;
 }
 
+export type ProjectUserRole = 'viewer' | 'editor' | 'admin';
+
+export interface ProjectUser {
+  id: UUID;
+  project_id: UUID;
+  user_id: UUID;
+  role: ProjectUserRole;
+  created_at: string;
+}
+
+export interface ProjectUserWithProfile extends ProjectUser {
+  profile: Profile;
+}
+
 

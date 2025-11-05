@@ -5,16 +5,35 @@ import { createOutput, deleteOutput, updateOutput } from '@/api/outputs';
 import { createActivity, deleteActivity, updateActivity } from '@/api/activities';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
+import { useProjectStore } from '@/stores/project';
+import { isProjectAdmin } from '@/api/projects';
 import type { Objective, Output, Activity } from '@/types';
 import ActivityForm from './ActivityForm.vue';
 
 const auth = useAuthStore();
 const dataStore = useDataStore();
+const projectStore = useProjectStore();
 const router = useRouter();
 const props = defineProps<{ objective: Objective }>();
 const emit = defineEmits<{ (e: 'output-selected', output: Output | null): void }>();
 
+const isProjectLead = ref(false);
 const isAdmin = computed(() => auth.profile?.is_admin === true);
+const canManage = computed(() => isAdmin.value || isProjectLead.value);
+
+// Check project admin status
+watch(() => projectStore.currentProject, async (project) => {
+  if (project?.id) {
+    try {
+      isProjectLead.value = await isProjectAdmin(project.id);
+    } catch (error) {
+      console.error('Failed to check project admin status:', error);
+      isProjectLead.value = false;
+    }
+  } else {
+    isProjectLead.value = false;
+  }
+}, { immediate: true });
 
 const selectedOutputId = ref<string | null>(null);
 
@@ -213,7 +232,7 @@ function openTaskInTasksPage(activity: Activity) {
         <div class="p-4 border-b h-14 flex items-center justify-between">
           <h3 class="font-semibold">Outputs</h3>
           <button 
-            v-if="isAdmin"
+            v-if="canManage"
             @click="startAddOutput" 
             class="bg-blue-600 text-white w-8 h-8 rounded hover:bg-blue-700 flex items-center justify-center text-lg font-semibold"
           >
@@ -267,7 +286,7 @@ function openTaskInTasksPage(activity: Activity) {
                 </div>
                 
                 <!-- Edit buttons below - right aligned -->
-                <div v-if="isAdmin" class="flex gap-1 pt-1 justify-end">
+                <div v-if="canManage" class="flex gap-1 pt-1 justify-end">
                   <button
                     @click.stop="editOutputNumber(output)"
                     class="text-green-600 hover:text-green-700 text-xs"

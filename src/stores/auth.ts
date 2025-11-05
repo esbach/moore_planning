@@ -32,10 +32,28 @@ export const useAuthStore = defineStore('auth', {
       const user = this.session?.user;
       if (!user) return;
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-      if (data) { this.profile = data as Profile; return; }
-      const insert = { id: user.id, full_name: user.user_metadata?.full_name ?? null, email: user.email };
+      if (data) { 
+        this.profile = data as Profile; 
+        return; 
+      }
+      // Create profile with is_admin defaulting to false (admins should set this manually in DB)
+      const insert = { 
+        id: user.id, 
+        full_name: user.user_metadata?.full_name ?? null, 
+        email: user.email,
+        is_admin: false
+      };
       const { data: created } = await supabase.from('profiles').insert(insert).select('*').single();
       this.profile = created as Profile;
+    },
+    async refreshProfile() {
+      // Force refresh profile from database
+      const user = this.session?.user;
+      if (!user) return;
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      if (data) {
+        this.profile = data as Profile;
+      }
     },
   },
 });

@@ -6,8 +6,10 @@ import interactionPlugin from '@fullcalendar/interaction';
 import { ref, onMounted, computed, watch } from 'vue';
 import { updateActivity } from '@/api/activities';
 import { useDataStore } from '@/stores/data';
+import { useProjectStore } from '@/stores/project';
 
 const dataStore = useDataStore();
+const projectStore = useProjectStore();
 
 const calendarError = ref<string | null>(null);
 const calendarReady = ref(false);
@@ -49,9 +51,15 @@ function subtractDayFromCalendar(dateStr: string | null): string | null {
   return `${yearStr}-${monthStr}-${dayStr}`;
 }
 
+// Get activities for current project only
+const projectActivities = computed(() => {
+  if (!projectStore.currentProject) return [];
+  return dataStore.activitiesByProject(projectStore.currentProject.id);
+});
+
 // Events from data store
 const events = computed(() => {
-  return dataStore.activities
+  return projectActivities.value
     .filter(a => a.start_date)
     .map(a => ({
       id: a.id,

@@ -7,11 +7,13 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { updateActivity } from '@/api/activities';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
+import { useProjectStore } from '@/stores/project';
 import NotionSidebar from '@/components/layout/NotionSidebar.vue';
 import type { Activity, Output, Objective, ActivityStatus } from '@/types';
 
 const auth = useAuthStore();
 const dataStore = useDataStore();
+const projectStore = useProjectStore();
 
 interface ActivityWithContext extends Activity {
   objectiveNumber: string | null;
@@ -53,12 +55,18 @@ function handleEventClick(arg: any) {
   selectedActivity.value = activity || null;
 }
 
+// Get activities for current project only
+const projectActivities = computed(() => {
+  if (!projectStore.currentProject) return [];
+  return dataStore.activitiesByProject(projectStore.currentProject.id);
+});
+
 // Computed for activities with context
 const activitiesWithContext = computed(() => {
   const outputMap = new Map<string, Output>(dataStore.outputs.map(o => [o.id, o]));
   const objectiveMap = new Map<string, Objective>(dataStore.objectives.map(o => [o.id, o]));
   
-  return dataStore.activities.map(activity => {
+  return projectActivities.value.map(activity => {
     const output = outputMap.get(activity.output_id);
     const objective = output ? objectiveMap.get(output.objective_id) : null;
     
@@ -114,7 +122,7 @@ function subtractDayFromCalendar(dateStr: string | null): string | null {
 }
 
 function load() {
-  events.value = dataStore.activities
+  events.value = projectActivities.value
     .filter(a => a.start_date) // Only show activities with dates
     .map(a => ({
       id: a.id,

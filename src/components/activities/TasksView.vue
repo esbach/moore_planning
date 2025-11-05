@@ -4,11 +4,13 @@ import { useRoute } from 'vue-router';
 import { updateActivity } from '@/api/activities';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
+import { useProjectStore } from '@/stores/project';
 import NotionSidebar from '@/components/layout/NotionSidebar.vue';
 import type { Activity, ActivityStatus, Output, Objective } from '@/types';
 
 const auth = useAuthStore();
 const dataStore = useDataStore();
+const projectStore = useProjectStore();
 const route = useRoute();
 
 interface ActivityWithContext extends Activity {
@@ -42,14 +44,20 @@ const saving = ref(false);
 const objectiveExpanded = ref(false); // Default closed
 const outputExpanded = ref(true); // Default open
 
+// Get activities for current project only
+const projectActivities = computed(() => {
+  if (!projectStore.currentProject) return [];
+  return dataStore.activitiesByProject(projectStore.currentProject.id);
+});
+
 // Get activities with context from data store
 const activitiesWithContext = computed(() => {
   // Build maps for quick lookup
   const outputMap = new Map<string, Output>(dataStore.outputs.map(o => [o.id, o]));
   const objectiveMap = new Map<string, Objective>(dataStore.objectives.map(o => [o.id, o]));
   
-  // Enrich activities with context
-  return dataStore.activities.map(activity => {
+  // Enrich activities with context (only for current project)
+  return projectActivities.value.map(activity => {
     const output = outputMap.get(activity.output_id);
     const objective = output ? objectiveMap.get(output.objective_id) : null;
     

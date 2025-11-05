@@ -79,6 +79,26 @@ export const useDataStore = defineStore('data', {
           });
     },
     
+    // Get activities by project ID (filter through outcomes -> objectives -> outputs -> activities)
+    activitiesByProject: (state) => {
+      return (projectId: string) => {
+        // Get all outcomes for this project
+        const projectOutcomes = state.outcomes.filter(o => o.project_id === projectId);
+        const outcomeIds = new Set(projectOutcomes.map(o => o.id));
+        
+        // Get all objectives for these outcomes
+        const projectObjectives = state.objectives.filter(o => outcomeIds.has(o.outcome_id));
+        const objectiveIds = new Set(projectObjectives.map(o => o.id));
+        
+        // Get all outputs for these objectives
+        const projectOutputs = state.outputs.filter(o => objectiveIds.has(o.objective_id));
+        const outputIds = new Set(projectOutputs.map(o => o.id));
+        
+        // Get all activities for these outputs
+        return state.activities.filter(a => outputIds.has(a.output_id));
+      };
+    },
+    
     // Get progress updates by activity ID
     progressUpdatesByActivity: (state) => {
       return (activityId: string) => 

@@ -13,6 +13,10 @@ const errorMsg = ref('');
 
 onMounted(async () => {
   await auth.init();
+  // Refresh profile to ensure we have latest data (including is_admin)
+  if (auth.session) {
+    await auth.refreshProfile();
+  }
   // If session exists on mount (e.g., page refresh), load data immediately
   if (auth.session && !dataStore.loaded) {
     try {
@@ -25,11 +29,15 @@ onMounted(async () => {
 
 // Load all data when user is authenticated
 watch(() => auth.session, async (session) => {
-  if (session && !dataStore.loaded) {
-    try {
-      await dataStore.loadAll();
-    } catch (e) {
-      console.error('Failed to preload data:', e);
+  if (session) {
+    // Refresh profile when session changes to get latest data
+    await auth.refreshProfile();
+    if (!dataStore.loaded) {
+      try {
+        await dataStore.loadAll();
+      } catch (e) {
+        console.error('Failed to preload data:', e);
+      }
     }
   }
 });
@@ -41,6 +49,8 @@ async function signInPassword() {
   try {
     const { error } = await supabase.auth.signInWithPassword({ email: email.value, password: password.value });
     if (error) throw error;
+    // Refresh profile after sign in to get latest data
+    await auth.refreshProfile();
   } catch (e: any) {
     errorMsg.value = e?.message || 'Sign-in failed';
   }
