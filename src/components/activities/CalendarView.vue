@@ -479,10 +479,12 @@ async function onEventResize(arg: any) {
                 </div>
                 <div v-if="outputExpanded" class="px-3 pb-3 border-t bg-gray-50">
                   <div class="pt-3">
-                    <div v-if="selectedActivity.outputNumber" class="text-xs font-semibold text-gray-600 mb-1">
-                      Output: {{ selectedActivity.outputNumber }}
+                    <div class="text-sm text-gray-900">
+                      <span v-if="selectedActivity.outputNumber">{{ selectedActivity.outputNumber }}</span>
+                      <span v-if="selectedActivity.outputNumber && selectedActivity.outputTitle">: </span>
+                      <span v-if="selectedActivity.outputTitle">{{ selectedActivity.outputTitle }}</span>
+                      <span v-if="!selectedActivity.outputNumber && !selectedActivity.outputTitle">-</span>
                     </div>
-                    <div class="text-sm text-gray-900">{{ selectedActivity.outputTitle }}</div>
                   </div>
                 </div>
               </div>
