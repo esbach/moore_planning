@@ -265,7 +265,7 @@ const currentProject = computed(() => {
 </script>
 
 <template>
-  <Modal :open="show" size="full" @close="emit('close')">
+  <Modal :open="show" size="half" @close="emit('close')">
     <div class="w-full max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-6">
         <div>
